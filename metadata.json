@@ -1,0 +1,6 @@
+{
+  "name": "AIText - AI Text Humanizer (aitext.tech)",
+  "description": "Free AI text humanizer and natural prose editor on https://www.aitext.tech that converts AI-generated or robotic drafts into engaging human-like prose with real-time readability analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
