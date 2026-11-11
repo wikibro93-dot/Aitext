@@ -19,9 +19,11 @@ import {
   SearchCheck,
   FileVideo,
   ArrowRight,
+  Image as ImageIcon,
+  FileImage,
 } from "lucide-react";
 
-type Mode = "link" | "upload";
+type Mode = "link" | "upload" | "image";
 
 interface DetectResult {
   aiScore: number | null;
@@ -59,6 +61,8 @@ export default function VideoDetectorClient() {
   const [mode, setMode] = useState<Mode>("link");
   const [link, setLink] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -66,6 +70,7 @@ export default function VideoDetectorClient() {
   const [result, setResult] = useState<DetectResult | null>(null);
   const [showDownloadPopup, setShowDownloadPopup] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const resetOutcome = () => {
     setError(null);
@@ -160,6 +165,72 @@ export default function VideoDetectorClient() {
     }
   };
 
+  const runDetectionOnImageFile = async (f: File) => {
+    setStatus("Uploading and analysing the image… this usually takes a few seconds.");
+    const fd = new FormData();
+    fd.append("media", f, f.name);
+    const res = await fetch("/api/detect-image", {
+      method: "POST",
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        data?.error || "The detection service could not analyse this image."
+      );
+    }
+    return data as DetectResult;
+  };
+
+  const runDetectionOnImageUrl = async (url: string) => {
+    setStatus("Analysing the image… this usually takes a few seconds.");
+    const res = await fetch("/api/detect-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        data?.error || "The detection service could not analyse this image."
+      );
+    }
+    return data as DetectResult;
+  };
+
+  const handleCheckImage = async () => {
+    resetOutcome();
+    setLoading(true);
+    try {
+      const url = imageUrl.trim();
+      if (imageFile) {
+        const out = await runDetectionOnImageFile(imageFile);
+        setResult(out);
+      } else if (url) {
+        const out = await runDetectionOnImageUrl(url);
+        setResult(out);
+      } else {
+        setError("Choose an image file or paste an image link first.");
+      }
+    } catch (e: any) {
+      setError(e?.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+      setStatus(null);
+    }
+  };
+
+  const onDropImage = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) {
+      setImageFile(f);
+      setImageUrl("");
+      resetOutcome();
+    }
+  };
+
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
@@ -207,13 +278,15 @@ export default function VideoDetectorClient() {
         {/* Hero */}
         <div className="max-w-3xl">
           <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-4xl">
-            AI Video Detector — check if a video is AI-generated or fake
+            AI Video &amp; Image Detector — check if a video or photo is
+            AI-generated or fake
           </h1>
           <p className="mt-3 text-base leading-relaxed text-slate-600">
-            Fake videos spread fast on Facebook, YouTube, TikTok and Instagram.
-            Paste a link or upload a video and get an AI-likelihood score plus a
-            deepfake check — free, no sign-up. Best for clips under 1 minute
-            (max 50&nbsp;MB).
+            Fake videos and photos spread fast on Facebook, YouTube, TikTok and
+            Instagram. Paste a link, upload a video, or check an image and get
+            an AI-likelihood score plus a deepfake check — free, no sign-up.
+            Videos: best for clips under 1 minute (max 50&nbsp;MB). Images:
+            JPG, PNG, WebP or GIF (max 20&nbsp;MB).
           </p>
         </div>
 
@@ -248,6 +321,20 @@ export default function VideoDetectorClient() {
               }`}
             >
               <Upload className="h-4 w-4" /> Upload a video
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("image");
+                resetOutcome();
+              }}
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                mode === "image"
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              <ImageIcon className="h-4 w-4" /> Check an image
             </button>
           </div>
 
@@ -295,7 +382,7 @@ export default function VideoDetectorClient() {
                 download it and upload the file instead.
               </p>
             </div>
-          ) : (
+          ) : mode === "upload" ? (
             <div className="mt-5">
               <div
                 role="button"
@@ -353,6 +440,97 @@ export default function VideoDetectorClient() {
                     <SearchCheck className="h-4 w-4" />
                   )}
                   {loading ? "Checking…" : "Check this video"}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-5">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => imageInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    imageInputRef.current?.click();
+                  }
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDropImage}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-10 text-center transition-colors ${
+                  dragOver
+                    ? "border-slate-900 bg-slate-100"
+                    : "border-slate-300 bg-slate-50 hover:border-slate-400"
+                }`}
+              >
+                <FileImage className="h-8 w-8 text-slate-400" />
+                <p className="mt-3 text-sm font-semibold">
+                  {imageFile
+                    ? imageFile.name
+                    : "Drop an image here, or click to choose one"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  JPG, PNG, WebP or GIF · max 20&nbsp;MB
+                </p>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setImageFile(f);
+                      setImageUrl("");
+                      resetOutcome();
+                    }
+                  }}
+                />
+              </div>
+              <div className="mt-4">
+                <label
+                  htmlFor="image-link"
+                  className="text-sm font-semibold text-slate-700"
+                >
+                  Or paste an image link
+                </label>
+                <div className="mt-2 flex flex-col gap-3 sm:flex-row">
+                  <input
+                    id="image-link"
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => {
+                      setImageUrl(e.target.value);
+                      if (e.target.value) setImageFile(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void handleCheckImage();
+                      }
+                    }}
+                    placeholder="Paste a direct image URL (https://…/photo.jpg)…"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+                </div>
+              </div>
+              {(imageFile || imageUrl.trim()) && (
+                <button
+                  type="button"
+                  onClick={() => void handleCheckImage()}
+                  disabled={loading}
+                  className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SearchCheck className="h-4 w-4" />
+                  )}
+                  {loading ? "Checking…" : "Check this image"}
                 </button>
               )}
             </div>

@@ -32,7 +32,10 @@ function normalizeResult(payload: any) {
   const genai = type.genai ?? {};
   const deepfake = type.deepfake ?? {};
 
+  // Image endpoint returns type.ai_generated / type.deepfake as plain
+  // numbers; video endpoint nests them under type.genai / type.deepfake.
   const aiScore =
+    toNumber(type.ai_generated) ??
     toNumber(genai.ai_generated) ??
     toNumber(genai.ai) ??
     toNumber(genai.score) ??
@@ -40,6 +43,7 @@ function normalizeResult(payload: any) {
     null;
 
   const deepfakeScore =
+    toNumber(type.deepfake) ??
     toNumber(deepfake.score) ??
     toNumber(deepfake.fake) ??
     toNumber(payload?.deepfake) ??
