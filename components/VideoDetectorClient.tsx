@@ -25,6 +25,10 @@ import {
 
 type Mode = "link" | "upload" | "image";
 
+// Creem checkout URL for the $31/month AI Video Detector plan.
+const VIDEO_PLAN_CHECKOUT_URL =
+  "https://www.creem.io/product/prod_2zqIDCAqY2QN8u6YDJGOb6";
+
 interface DetectResult {
   aiScore: number | null;
   deepfakeScore: number | null;
@@ -72,6 +76,124 @@ export default function VideoDetectorClient() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  // Paid video plan ($31/month) — license key from Creem. Image detection
+  // stays free; only video detection requires a key.
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseActive, setLicenseActive] = useState(false);
+  const [licenseExpiresAt, setLicenseExpiresAt] = useState<string | null>(null);
+  const [licenseMsg, setLicenseMsg] = useState<string | null>(null);
+  const [licenseChecking, setLicenseChecking] = useState(false);
+  const [showLicenseBox, setShowLicenseBox] = useState(false);
+
+  // On load, re-verify a stored key so a returning subscriber stays unlocked.
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem("aitext_video_license");
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved?.key) return;
+      setLicenseKey(saved.key);
+      void verifyLicenseKey(saved.key, saved.instance_id || "");
+    } catch {
+      // Stored key is unreadable — user can paste it again.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // After a successful Creem checkout the buyer returns with
+  // ?subscribed=1 — open the key box and tell them to paste the key
+  // from their receipt email.
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("subscribed") === "1") {
+        setShowLicenseBox(true);
+        setLicenseMsg(
+          "Payment complete! Paste the license key from your Creem receipt email below to unlock video detection."
+        );
+        params.delete("subscribed");
+        const next =
+          window.location.pathname +
+          (params.toString() ? `?${params.toString()}` : "");
+        window.history.replaceState(null, "", next);
+      }
+    } catch {
+      // Ignore URL parsing errors.
+    }
+  }, []);
+
+  const verifyLicenseKey = async (key: string, instanceId: string) => {
+    const normalized = key.trim().toUpperCase();
+    if (!normalized) {
+      setLicenseMsg("Paste your license key first.");
+      return false;
+    }
+    setLicenseChecking(true);
+    setLicenseMsg(null);
+    try {
+      const res = await fetch("/api/detect-video/verify-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: normalized,
+          instance_id: instanceId || undefined,
+          instance_name: "aitext-video-detector",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.active) {
+        setLicenseActive(false);
+        setLicenseMsg(
+          data?.error || "This license key could not be verified. Check the key and try again."
+        );
+        return false;
+      }
+      setLicenseActive(true);
+      setLicenseExpiresAt(data.expiresAt || null);
+      setLicenseMsg(
+        data.expiresAt
+          ? `License active — video detection unlocked until ${new Date(data.expiresAt).toLocaleDateString()}.`
+          : "License active — video detection unlocked."
+      );
+      try {
+        localStorage.setItem(
+          "aitext_video_license",
+          JSON.stringify({ key: normalized, instance_id: data.instance_id || instanceId || "" })
+        );
+      } catch {
+        // Storage unavailable — key still works for this session.
+      }
+      setShowLicenseBox(false);
+      return true;
+    } catch {
+      setLicenseMsg("Could not verify the license key right now. Please try again.");
+      return false;
+    } finally {
+      setLicenseChecking(false);
+    }
+  };
+
+  const removeLicenseKey = () => {
+    try {
+      localStorage.removeItem("aitext_video_license");
+    } catch {
+      // Ignore storage errors.
+    }
+    setLicenseKey("");
+    setLicenseActive(false);
+    setLicenseExpiresAt(null);
+    setLicenseMsg(null);
+  };
+
+  const requireVideoAccess = () => {
+    if (licenseActive) return true;
+    setShowLicenseBox(true);
+    setError(
+      "Video detection is a paid feature ($31/month). Subscribe below, then paste your license key to unlock it. Image detection is free."
+    );
+    return false;
+  };
+
   const resetOutcome = () => {
     setError(null);
     setResult(null);
@@ -111,6 +233,7 @@ export default function VideoDetectorClient() {
   };
 
   const handleCheckLink = async () => {
+    if (!requireVideoAccess()) return;
     const trimmed = link.trim();
     if (!trimmed) {
       setError("Paste a video link first.");
@@ -148,6 +271,7 @@ export default function VideoDetectorClient() {
   };
 
   const handleCheckFile = async () => {
+    if (!requireVideoAccess()) return;
     if (!file) {
       setError("Choose a video file first.");
       return;
@@ -337,6 +461,106 @@ export default function VideoDetectorClient() {
               <ImageIcon className="h-4 w-4" /> Check an image
             </button>
           </div>
+
+          {/* Paid video plan — license key box (video only; images stay free) */}
+          {(mode === "link" || mode === "upload") && (
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              {licenseActive ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Video plan active
+                    {licenseExpiresAt
+                      ? ` · until ${new Date(licenseExpiresAt).toLocaleDateString()}`
+                      : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={removeLicenseKey}
+                    className="text-xs font-medium text-slate-500 underline underline-offset-2 hover:text-slate-900"
+                  >
+                    Remove key
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-sm font-semibold">
+                    Video detection — $31/month
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                    Video checks need a paid plan because the detection service
+                    charges per video. Subscribe, then paste the license key
+                    from your receipt email to unlock video detection. Image
+                    detection is free.
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <a
+                      href={VIDEO_PLAN_CHECKOUT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                      Subscribe — $31/month
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowLicenseBox((v) => !v)}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      {showLicenseBox ? "Hide key entry" : "I already have a key"}
+                    </button>
+                  </div>
+                  {showLicenseBox && (
+                    <div className="mt-3">
+                      <label
+                        htmlFor="license-key"
+                        className="text-xs font-semibold text-slate-700"
+                      >
+                        License key
+                      </label>
+                      <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          id="license-key"
+                          type="text"
+                          value={licenseKey}
+                          onChange={(e) => setLicenseKey(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void verifyLicenseKey(licenseKey, "");
+                            }
+                          }}
+                          placeholder="Paste your license key…"
+                          autoComplete="off"
+                          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void verifyLicenseKey(licenseKey, "")}
+                          disabled={licenseChecking}
+                          className="flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+                        >
+                          {licenseChecking ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                          {licenseChecking ? "Verifying…" : "Verify & unlock"}
+                        </button>
+                      </div>
+                      {licenseMsg && (
+                        <p className="mt-2 text-xs text-slate-600">{licenseMsg}</p>
+                      )}
+                      <p className="mt-2 text-xs text-slate-500">
+                        Lost your key? Find it in your Creem receipt email, or
+                        contact support with the email you paid with.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {mode === "link" ? (
             <div className="mt-5">
