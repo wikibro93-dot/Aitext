@@ -30,7 +30,8 @@ import {
   Info,
   Share2,
   ExternalLink,
-  Send
+  Send,
+  Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -320,6 +321,20 @@ export default function HumanizerPage() {
               >
                 <BookOpen className="h-3.5 w-3.5 text-slate-400" />
                 Writing Guides
+              </Link>
+              <Link
+                href="/ai-video-detector"
+                className="text-xs font-medium text-slate-600 hover:text-indigo-600 transition-colors flex items-center gap-1"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+                AI Video Detector
+              </Link>
+              <Link
+                href="/video-downloader"
+                className="text-xs font-medium text-slate-600 hover:text-indigo-600 transition-colors flex items-center gap-1"
+              >
+                <Download className="h-3.5 w-3.5 text-slate-400" />
+                Video Downloader
               </Link>
               <button 
                 onClick={() => setIsGuideOpen(true)}

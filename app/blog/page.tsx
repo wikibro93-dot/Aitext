@@ -103,6 +103,13 @@ export default function BlogIndexPage() {
                 Back
               </Link>
               <Link
+                href="/ai-video-detector"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-slate-400" />
+                Video Detector
+              </Link>
+              <Link
                 href="/"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-2xs rounded-lg transition-all active:scale-95"
               >
